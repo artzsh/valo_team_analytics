@@ -51,7 +51,7 @@ export function PlayersPage() {
         </div>
       </div>
       <div className="mt-8 grid gap-4 lg:grid-cols-2">
-        <DuoCard label="Лучшее дуо" title="Надёжный напарник" duo={bestDuo} accent="text-emerald-400"/>
+        <DuoCard label="Лучшее дуо" title="Сила в дружбе" duo={bestDuo} accent="text-emerald-400"/>
         <DuoCard label="Худшее дуо" title="Слабая связка" duo={worstDuo} accent="text-valorant"/>
       </div>
       <Section title="Винрейт по картам"><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{maps.map((map) => <MapCard key={map.name} stat={map}/>)}</div></Section>
