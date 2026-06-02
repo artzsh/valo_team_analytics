@@ -1,5 +1,73 @@
-import{useEffect,useMemo,useState}from'react';import{useData}from'../App';import{Container,Hero}from'../components/PageShell';import{Fade,FilterBar,Loading,NoData,pct,StatCard}from'../components/Common';import{AgentCard,MapCard,PlayerCard,RoleCard}from'../components/Cards';import{agentAsset}from'../lib/assets';import{filterMatches,rowsFromMatches}from'../lib/grouping';import{groupRows,mostCommon,summarize,winrate}from'../lib/metrics';import{fmt}from'../lib/normalize';import type{ActId,PlayerRow}from'../types';
-const roles=['duelist','controller','initiator','sentinel'];
-export function PlayersPage(){const{matches,catalog,loading}=useData();const[act,setAct]=useState<ActId>('all'),[player,setPlayer]=useState('');const actMatches=useMemo(()=>filterMatches(matches,act),[matches,act]),allRows=rowsFromMatches(actMatches);const players=useMemo(()=>{const c=new Map<string,number>();allRows.forEach(r=>c.set(r.player,(c.get(r.player)??0)+1));return[...c].sort((a,b)=>b[1]-a[1]).map(x=>x[0])},[allRows]);useEffect(()=>{if(!players.includes(player))setPlayer(players[0]??'')},[players,player]);const rows=allRows.filter(r=>r.player===player),s=summarize(rows),maps=groupRows(rows,'map'),roleStats=groupRows(rows,'role'),agents=groupRows(rows,'agent'),mainAgent=mostCommon(rows,'agent'),duo=findDuo(actMatches,player);if(loading)return <Loading/>;return <Container><Hero eyebrow="Player intel" title="Статистика игрока" copy="Личный dashboard с KPI, любимыми агентами, картами, ролями и лучшим напарником."/><FilterBar act={act} setAct={setAct} fields={[{label:'Игрок',value:player,set:setPlayer,options:players}]}/>{!rows.length?<NoData/>:<Fade id={`${act}-${player}`}><div className="grid gap-4 lg:grid-cols-[260px_1fr]"><div className="glass relative overflow-hidden rounded-2xl p-5"><img src={agentAsset(catalog,mainAgent).image} className="absolute inset-0 h-full w-full object-cover opacity-30"/><div className="relative flex h-full flex-col justify-end pt-32"><p className="label text-valorant">Most picked · {mainAgent}</p><p className="font-display text-3xl font-bold">{player}</p><p className="mt-2 text-sm text-slate-400">{s.wins}W / {s.losses}L</p></div></div><div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5"><StatCard label="Winrate" value={pct(s.winrate)} accent/><StatCard label="Матчи" value={`${s.matches}`}/><StatCard label="K/D" value={fmt(s.kd,2)}/><StatCard label="ACS" value={fmt(s.acs,0)}/><StatCard label="TRS" value={fmt(s.trs,0)}/><StatCard label="KAST" value={pct(s.kast)}/><StatCard label="HS%" value={pct(s.hs)}/><StatCard label="FK / FD" value={`${s.fk} / ${s.fd}`}/><StatCard label="Damage Delta" value={`${s.damage>=0?'+':''}${fmt(s.damage,1)}`}/><StatCard label="K / D / A" value={`${s.kills} / ${s.deaths} / ${s.assists}`}/></div></div>{duo&&<section className="mt-8 glass flex flex-wrap items-center gap-4 rounded-2xl p-4"><div><p className="label text-valorant">Лучшее дуо</p><h2 className="font-display text-2xl font-bold uppercase">Надёжный напарник</h2></div><div className="ml-auto w-32"><PlayerCard player={duo.player} detail={duo.agent} kind="agents" rows={duo.rows}/></div><div className="min-w-28 text-right"><p className="metric text-valorant">{pct(duo.winrate)}</p><p className="text-xs text-slate-400">{duo.matches} совместных матчей</p></div></section>}<Section title="Винрейт по картам"><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{maps.map(x=><MapCard key={x.name} stat={x}/>)}</div></Section><Section title="Роли"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{roles.map(x=><RoleCard key={x} name={x} stat={roleStats.find(s=>s.name.toLowerCase()===x)}/>)}</div></Section><Section title="Агенты"><div className="grid gap-3 md:grid-cols-2">{agents.map(x=><AgentCard key={x.name} stat={x}/>)}</div></Section></Fade>}</Container>}
-function Section({title,children}:{title:string;children:React.ReactNode}){return <section className="mt-8"><h2 className="mb-4 font-display text-2xl font-bold uppercase">{title}</h2>{children}</section>}
-function findDuo(matches:ReturnType<typeof filterMatches>,player:string){const m=new Map<string,{player:string;rows:PlayerRow[];matches:number;wins:number}>();matches.filter(x=>x.rows.some(r=>r.player===player)).forEach(match=>match.rows.filter(r=>r.player!==player).forEach(r=>{const x=m.get(r.player)??{player:r.player,rows:[],matches:0,wins:0};x.rows.push(r);x.matches++;if(match.result==='win')x.wins++;m.set(r.player,x)}));return[...m.values()].map(x=>({...x,winrate:winrate(x.wins,x.matches),agent:mostCommon(x.rows,'agent')})).sort((a,b)=>b.winrate-a.winrate||b.matches-a.matches)[0]}
+import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useData } from '../App';
+import { Container, Hero } from '../components/PageShell';
+import { Fade, FilterBar, Loading, NoData, pct, StatCard } from '../components/Common';
+import { AgentCard, MapCard, PlayerCard, RoleCard } from '../components/Cards';
+import { agentAsset } from '../lib/assets';
+import { filterMatches, rowsFromMatches } from '../lib/grouping';
+import { getBestDuo, getDuos, getWorstDuo, groupRows, mostCommon, summarize } from '../lib/metrics';
+import { fmt } from '../lib/normalize';
+import type { ActId, DuoStats } from '../types';
+
+const roles = ['duelist', 'controller', 'initiator', 'sentinel'];
+
+export function PlayersPage() {
+  const { matches, catalog, loading } = useData();
+  const [act, setAct] = useState<ActId>('all');
+  const [player, setPlayer] = useState('');
+  const actMatches = useMemo(() => filterMatches(matches, act), [matches, act]);
+  const allRows = rowsFromMatches(actMatches);
+  const players = useMemo(() => {
+    const count = new Map<string, number>();
+    allRows.forEach((row) => count.set(row.player, (count.get(row.player) ?? 0) + 1));
+    return [...count].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+  }, [allRows]);
+
+  useEffect(() => { if (!players.includes(player)) setPlayer(players[0] ?? ''); }, [players, player]);
+
+  const rows = allRows.filter((row) => row.player === player);
+  const stats = summarize(rows);
+  const maps = groupRows(rows, 'map');
+  const roleStats = groupRows(rows, 'role');
+  const agents = groupRows(rows, 'agent');
+  const mainAgent = mostCommon(rows, 'agent');
+  const duos = getDuos(actMatches, player);
+  const bestDuo = getBestDuo(duos);
+  const worstDuo = getWorstDuo(duos);
+
+  if (loading) return <Loading/>;
+  return <Container>
+    <Hero eyebrow="Player intel" title="Статистика игрока" copy="Личный dashboard с KPI, любимыми агентами, картами, ролями и лучшими связками с тиммейтами."/>
+    <FilterBar act={act} setAct={setAct} fields={[{ label: 'Игрок', value: player, set: setPlayer, options: players }]}/>
+    {!rows.length ? <NoData/> : <Fade id={`${act}-${player}`}>
+      <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+        <div className="glass relative overflow-hidden rounded-2xl p-5">
+          <img src={agentAsset(catalog, mainAgent).image} className="absolute inset-0 h-full w-full object-cover opacity-30"/>
+          <div className="relative flex h-full flex-col justify-end pt-32"><p className="label text-valorant">Most picked · {mainAgent}</p><p className="font-display text-3xl font-bold">{player}</p><p className="mt-2 text-sm text-slate-400">{stats.wins}W / {stats.losses}L</p></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          <StatCard label="Winrate" value={pct(stats.winrate)} accent/><StatCard label="Матчи" value={`${stats.matches}`}/><StatCard label="K/D" value={fmt(stats.kd, 2)}/><StatCard label="ACS" value={fmt(stats.acs, 0)}/><StatCard label="TRS" value={fmt(stats.trs, 0)}/><StatCard label="KAST" value={pct(stats.kast)}/><StatCard label="HS%" value={pct(stats.hs)}/><StatCard label="FK / FD" value={`${stats.fk} / ${stats.fd}`}/><StatCard label="Damage Delta" value={`${stats.damage >= 0 ? '+' : ''}${fmt(stats.damage, 1)}`}/><StatCard label="K / D / A" value={`${stats.kills} / ${stats.deaths} / ${stats.assists}`}/>
+        </div>
+      </div>
+      <div className="mt-8 grid gap-4 lg:grid-cols-2">
+        <DuoCard label="Лучшее дуо" title="Надёжный напарник" duo={bestDuo} accent="text-emerald-400"/>
+        <DuoCard label="Худшее дуо" title="Слабая связка" duo={worstDuo} accent="text-valorant"/>
+      </div>
+      <Section title="Винрейт по картам"><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{maps.map((map) => <MapCard key={map.name} stat={map}/>)}</div></Section>
+      <Section title="Роли"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{roles.map((role) => <RoleCard key={role} name={role} stat={roleStats.find((stat) => stat.name.toLowerCase() === role)}/>)}</div></Section>
+      <Section title="Агенты"><div className="grid gap-3 md:grid-cols-2">{agents.map((agent) => <AgentCard key={agent.name} stat={agent}/>)}</div></Section>
+    </Fade>}
+  </Container>;
+}
+
+function DuoCard({ label, title, duo, accent }: { label: string; title: string; duo?: DuoStats; accent: string }) {
+  return <section className="glass flex min-h-40 flex-wrap items-center gap-4 rounded-2xl p-4">
+    <div><p className={`label ${accent}`}>{label}</p><h2 className="font-display text-2xl font-bold uppercase">{title}</h2></div>
+    {duo ? <><div className="ml-auto w-32"><PlayerCard player={duo.player} detail={duo.agent} kind="agents" rows={duo.rows}/></div><div className="min-w-28 text-right"><p className={`metric ${accent}`}>{pct(duo.winrate)}</p><p className="text-xs text-slate-400">{duo.matches} совместных матчей</p><p className="mt-1 text-xs text-slate-500">{duo.wins}W / {duo.losses}L</p></div></> : <div className="ml-auto text-sm text-slate-400">Данных нет :(</div>}
+  </section>;
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="mt-8"><h2 className="mb-4 font-display text-2xl font-bold uppercase">{title}</h2>{children}</section>;
+}

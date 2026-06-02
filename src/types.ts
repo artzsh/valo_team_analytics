@@ -8,3 +8,5 @@ export interface Combo {key:string;kind:ComboKind;members:ComboMember[];matches:
 export interface AssetItem {name:string;image?:string;order?:number}
 export interface AssetCatalog {agents:Record<string,AssetItem>;maps:Record<string,AssetItem>;roles:Record<string,AssetItem>;ranks:Record<string,AssetItem>}
 export interface GroupStats {name:string;matches:number;wins:number;winrate:number;kd:number;kast:number;rows:PlayerRow[]}
+
+export interface DuoStats {player:string;rows:PlayerRow[];matches:number;wins:number;losses:number;winrate:number;agent:string}

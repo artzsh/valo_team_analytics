@@ -1,5 +1,5 @@
 import { MIN_MATCHES_FOR_COMBO } from '../config/acts';
-import type { Combo, ComboKind, GroupStats, Match, PlayerRow } from '../types';
+import type { Combo, ComboKind, DuoStats, GroupStats, Match, PlayerRow } from '../types';
 
 export const average = (values: number[]) =>
   values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
@@ -78,3 +78,30 @@ export function mostCommon(rows: PlayerRow[], field: 'agent' | 'match_rank') {
   rows.forEach((row) => count.set(row[field], (count.get(row[field]) ?? 0) + 1));
   return [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
 }
+
+export function getDuos(matches: Match[], player: string): DuoStats[] {
+  const grouped = new Map<string, { player: string; rows: PlayerRow[]; matches: number; wins: number }>();
+
+  matches.filter((match) => match.rows.some((row) => row.player === player)).forEach((match) => {
+    match.rows.filter((row) => row.player !== player).forEach((row) => {
+      const duo = grouped.get(row.player) ?? { player: row.player, rows: [], matches: 0, wins: 0 };
+      duo.rows.push(row);
+      duo.matches += 1;
+      if (match.result === 'win') duo.wins += 1;
+      grouped.set(row.player, duo);
+    });
+  });
+
+  return [...grouped.values()].map((duo) => ({
+    ...duo,
+    losses: duo.matches - duo.wins,
+    winrate: winrate(duo.wins, duo.matches),
+    agent: mostCommon(duo.rows, 'agent'),
+  }));
+}
+
+export const getBestDuo = (duos: DuoStats[]) =>
+  [...duos].sort((a, b) => b.winrate - a.winrate || b.matches - a.matches)[0];
+
+export const getWorstDuo = (duos: DuoStats[]) =>
+  [...duos].sort((a, b) => a.winrate - b.winrate || b.matches - a.matches)[0];
