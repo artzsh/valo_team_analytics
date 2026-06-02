@@ -1,0 +1,4 @@
+import type {AssetCatalog,AssetItem,PlayerRow} from '../types';import {normalizeName} from './normalize';
+export const EMPTY_CATALOG:AssetCatalog={agents:{},maps:{},roles:{},ranks:{}};export async function loadAssets(){try{return await fetch('/assets/catalog.json').then(r=>r.ok?r.json():EMPTY_CATALOG)}catch{return EMPTY_CATALOG}}
+const get=(dict:Record<string,AssetItem>,name:string)=>dict[normalizeName(name)]??{name};export const agentAsset=(c:AssetCatalog,n:string)=>get(c.agents,n);export const mapAsset=(c:AssetCatalog,n:string)=>get(c.maps,n);export const roleAsset=(c:AssetCatalog,n:string)=>get(c.roles,n);export const rankAsset=(c:AssetCatalog,n:string)=>get(c.ranks,n);
+export function topRank(c:AssetCatalog,rows:PlayerRow[],player:string){return rows.filter(r=>r.player===player).map(r=>rankAsset(c,r.match_rank)).sort((a,b)=>(b.order??0)-(a.order??0))[0]??{name:'Unranked'}}
